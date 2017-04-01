@@ -32,14 +32,28 @@ type Location struct {
 	Name            string `json:"name"`
 }
 
+func (l *Location) ToPlace() *place {
+	return &place{
+		Lat: l.Lat,
+		Lng: l.Lon,
+		Data: map[string]interface{}{
+			"city_name":        l.CityName,
+			"cc":               l.CountryCode,
+			"admin":            l.AdminCode,
+			"subdivision":      l.CountrySubdivision,
+			"country_name":     l.CountryName,
+			"subdivision_name": l.SubdivisionName,
+			"name":             l.Name,
+		},
+	}
+}
+
 // https://github.com/hexorx/countries/tree/master/lib
 // source => https://anonscm.debian.org/cgit/pkg-isocodes/iso-codes.git/tree/iso_3166-2
 
 // XXX(tsileo): filter by feature class/feature code to only restrict to cities
 
-var locations = map[string]*Location{}
-
-func parseLocation(db *rawgeo.RawGeo) error {
+func parseLocation(p *places, db *rawgeo.RawGeo) error {
 	file, err := os.Open("cities1000.txt")
 	if err != nil {
 		panic(err)
@@ -83,10 +97,14 @@ func parseLocation(db *rawgeo.RawGeo) error {
 		} else {
 			loc.Name = fmt.Sprintf("%s, %s", loc.CityName, loc.CountryName)
 		}
+		_id, err := p.Insert(loc.ToPlace())
+		if err != nil {
+			return err
+		}
 
-		locations[loc.ID] = loc
+		// locations[loc.ID] = loc
 		p := &rawgeo.Point{
-			ID:  loc.ID,
+			ID:  _id.String(),
 			Lat: lat,
 			Lng: lon,
 		}
@@ -107,20 +125,30 @@ func main() {
 		panic(err)
 	}
 	defer db.Close()
-	// if err := parseLocation(db); err != nil {
-	// 	panic(err)
+	p, err := newPlaces("data/cities.places.db", "cities")
+	if err != nil {
+		panic(err)
+	}
+	defer p.Close()
+	// if err := parseLocation(p, db); err != nil {
+	// panic(err)
 	// }
 	took := time.Since(n)
 	fmt.Printf("loading took %v\n", took)
 
 	n = time.Now()
 	// Query should return Austin TX
-	res, err := db.Query(48.26127189, 4.0871129, 1000)
-	// res, err := db.Query(30.26715, -97.74306, 40) // 40m
+	// res, err := db.Query(48.26127189, 4.0871129, 1000)
+	res, err := db.Query(30.26715, -97.74306, 40) // 40m
 	took = time.Since(n)
-	fmt.Printf("query took %v\n", took)
+	fmt.Printf("query took %v\n,res=%v/err=%v", took, res, err)
 	if res != nil && len(res) > 0 {
-		fmt.Printf("res=%+v", locations[res[0].ID])
+		p2, err := p.Get(res[0].ID)
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Printf("res=%+v", p2)
 	} else {
 		fmt.Printf("res=%q\nerr=%v", res, err)
 	}

@@ -1,6 +1,6 @@
 # ge0
 
-`ge0` is a geospatial data store designed to store your own location, extensible via Lua.
+`ge0` is a geospatial data store designed to store your own previous locations, extensible via Lua.
 
 ## Features
 
