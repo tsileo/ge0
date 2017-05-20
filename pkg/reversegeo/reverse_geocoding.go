@@ -1,19 +1,23 @@
-package main
+package reversegeo
 
 import (
 	"bufio"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/pariz/gountries"
+	"github.com/tsileo/ge0/pkg/places"
+	"github.com/yuin/gopher-lua"
 
+	"a4.io/blobstash/pkg/apps/luautil"
+	"a4.io/blobstash/pkg/httputil"
 	"a4.io/rawgeo"
 )
 
-// FIXME(tsileo): use Places API instead of `locations = map[string]...`, and use id.ID from BlobStash Docstore (maybe extract it? along with Luatuil?)
 // TODO(tsile): explain how to download cities1000.txt and give a setup script
 
 var data = gountries.New()
@@ -32,8 +36,8 @@ type Location struct {
 	Name            string `json:"name"`
 }
 
-func (l *Location) ToPlace() *place {
-	return &place{
+func (l *Location) ToPlace() *places.Place {
+	return &places.Place{
 		Lat: l.Lat,
 		Lng: l.Lon,
 		Data: map[string]interface{}{
@@ -53,7 +57,7 @@ func (l *Location) ToPlace() *place {
 
 // XXX(tsileo): filter by feature class/feature code to only restrict to cities
 
-func parseLocation(p *places, db *rawgeo.RawGeo) error {
+func parseLocation(p *places.Places, db *rawgeo.RawGeo) error {
 	file, err := os.Open("cities1000.txt")
 	if err != nil {
 		panic(err)
@@ -118,38 +122,89 @@ func parseLocation(p *places, db *rawgeo.RawGeo) error {
 	return nil
 }
 
-func main() {
-	n := time.Now()
-	db, err := rawgeo.New("data/cities.db")
-	if err != nil {
-		panic(err)
-	}
-	defer db.Close()
-	p, err := newPlaces("data/cities.places.db", "cities")
-	if err != nil {
-		panic(err)
-	}
-	defer p.Close()
-	// if err := parseLocation(p, db); err != nil {
-	// panic(err)
-	// }
-	took := time.Since(n)
-	fmt.Printf("loading took %v\n", took)
+type ReverseGeo struct {
+	rawgeo *rawgeo.RawGeo
+	places *places.Places
+}
 
-	n = time.Now()
-	// Query should return Austin TX
-	// res, err := db.Query(48.26127189, 4.0871129, 1000)
-	res, err := db.Query(30.26715, -97.74306, 40) // 40m
-	took = time.Since(n)
-	fmt.Printf("query took %v\n,res=%v/err=%v", took, res, err)
+func New(rg *rawgeo.RawGeo, pl *places.Places) (*ReverseGeo, error) {
+	return &ReverseGeo{
+		rawgeo: rg,
+		places: pl,
+	}, nil
+}
+
+func (rg *ReverseGeo) Close() error {
+	rg.rawgeo.Close()
+	rg.places.Close()
+	return nil
+}
+
+func (rg *ReverseGeo) Query(lat, lng float64, prec int) (*places.Place, error) {
+	res, err := rg.rawgeo.Query(lat, lng, float64(prec)) // 40m
+	if err != nil {
+		return nil, err
+	}
 	if res != nil && len(res) > 0 {
-		p2, err := p.Get(res[0].ID)
+		p, err := rg.places.Get(res[0].ID)
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
-
-		fmt.Printf("res=%+v", p2)
-	} else {
-		fmt.Printf("res=%q\nerr=%v", res, err)
+		return p, nil
 	}
+	return nil, nil
+}
+
+func (rg *ReverseGeo) SetupLua() func(*lua.LState) int {
+	return func(L *lua.LState) int {
+		// Setup the "reversegeo" module
+		mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+			"reversegeo": func(L *lua.LState) int {
+				tbl := L.CheckTable(1)
+				if tbl == nil {
+					return 1
+				}
+				lat := float64(tbl.RawGetH(lua.LString("lat")).(lua.LNumber))
+				lng := float64(tbl.RawGetH(lua.LString("lng")).(lua.LNumber))
+				place, err := rg.Query(lat, lng, 10000)
+				if err != nil {
+					panic(err)
+				}
+				res := L.CreateTable(0, 3)
+				res.RawSetH(lua.LString("lat"), lua.LNumber(place.Lat))
+				res.RawSetH(lua.LString("lng"), lua.LNumber(place.Lng))
+				res.RawSetH(lua.LString("data"), luautil.InterfaceToLValue(L, place.Data))
+				L.Push(res)
+				return 1
+			},
+		})
+		L.Push(mod)
+		return 1
+	}
+}
+
+func (rg *ReverseGeo) apiReverseGeo(w http.ResponseWriter, r *http.Request) {
+	q := httputil.NewQuery(r.URL.Query())
+	lat, err := strconv.ParseFloat(r.URL.Query().Get("lat"), 64)
+	if err != nil {
+		panic(err)
+	}
+	lng, err := strconv.ParseFloat(r.URL.Query().Get("lng"), 64)
+	if err != nil {
+		panic(err)
+	}
+	precision, err := q.GetInt("precision", 5000, 50000)
+	if err != nil {
+		panic(err)
+	}
+
+	place, err := rg.Query(lat, lng, precision)
+	if err != nil {
+		panic(err)
+	}
+	httputil.WriteJSON(w, place)
+}
+
+func (rg *ReverseGeo) SetupAPI(router *mux.Router) {
+	router.HandleFunc("/api/reversegeo", rg.apiReverseGeo)
 }

@@ -1,4 +1,4 @@
-package main
+package places
 
 import (
 	"os"
@@ -13,13 +13,13 @@ func check(err error) {
 }
 
 func TestPlaces(t *testing.T) {
-	ps, err := newPlaces("places_test", "test")
+	ps, err := New("places_test", "test")
 	defer func() {
 		ps.Close()
 		os.RemoveAll("places_test")
 	}()
 	check(err)
-	p := &place{
+	p := &Place{
 		Lat: 1.0,
 		Lng: 3.0,
 	}

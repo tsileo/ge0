@@ -11,3 +11,14 @@
  - Built-in geospatial index using geohashes
  - Built-in offline reverse geocoding API
 
+## API
+
+### GET /api/reversegeo
+
+Offline reverse geocoding, using the "cities" Places index (from Geonames Cities 1000 dataset).
+
+Parameters: `lat`, `lng` and `precision` (optional, in meters).
+
+```
+$ curl http://localhost:8010/api/reversegeo?lat=1.0&lng=1.0
+```

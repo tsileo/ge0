@@ -1,4 +1,4 @@
-package main
+package places
 
 import (
 	"encoding/json"
@@ -11,20 +11,19 @@ import (
 	"github.com/cznic/kv"
 )
 
-type places struct {
+type Places struct {
 	db   *kv.DB
 	path string
-	name string
 }
 
-type place struct {
+type Place struct {
 	ID   *id.ID                 `json:"-"`
 	Lng  float64                `json:"lng"`
 	Lat  float64                `json:"lat"`
 	Data map[string]interface{} `json:"data"`
 }
 
-func newPlaces(path, name string) (*places, error) {
+func New(path string) (*Places, error) {
 	createOpen := kv.Open
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		createOpen = kv.Create
@@ -33,23 +32,23 @@ func newPlaces(path, name string) (*places, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &places{
+	return &Places{
 		db:   kvdb,
 		path: path,
 	}, nil
 }
 
-func (ps *places) Close() error {
+func (ps *Places) Close() error {
 	return ps.db.Close()
 }
 
-func (ps *places) Get(id string) (*place, error) {
+func (ps *Places) Get(id string) (*Place, error) {
 	js, err := ps.db.Get(nil, []byte(id))
 	if err != nil {
 		return nil, err
 	}
 
-	p := &place{}
+	p := &Place{}
 	if err := json.Unmarshal(js, p); err != nil {
 		return nil, err
 	}
@@ -57,7 +56,7 @@ func (ps *places) Get(id string) (*place, error) {
 	return p, err
 }
 
-func (ps *places) Insert(p *place) (*id.ID, error) {
+func (ps *Places) Insert(p *Place) (*id.ID, error) {
 	_id, err := id.New(time.Now().UTC().UnixNano())
 	if err != nil {
 		return nil, err
