@@ -58,13 +58,44 @@ func (l *Location) ToPlace() *Place {
 	}
 }
 
-// https://github.com/hexorx/countries/tree/master/lib
-// source => https://anonscm.debian.org/cgit/pkg-isocodes/iso-codes.git/tree/iso_3166-2
+type ReverseGeo struct {
+	rawgeo *rawgeo.RawGeo
+	kv     *kv.KV
+}
+
+func New(rg *rawgeo.RawGeo, kv *kv.KV) (*ReverseGeo, error) {
+	return &ReverseGeo{
+		rawgeo: rg,
+		kv:     kv,
+	}, nil
+}
+
+func (rg *ReverseGeo) Close() error {
+	rg.rawgeo.Close()
+	rg.kv.Close()
+	return nil
+}
+
+func (rg *ReverseGeo) Query(lat, lng float64, prec int) (*Place, error) {
+	res, err := rg.rawgeo.Query(lat, lng, float64(prec)) // 40m
+	if err != nil {
+		return nil, err
+	}
+	if res != nil && len(res) > 0 {
+		p := &Place{}
+		if err := rg.kv.Get(res[0].ID, p); err != nil {
+			return nil, err
+		}
+		return p, nil
+	}
+	return nil, nil
+}
 
 // XXX(tsileo): filter by feature class/feature code to only restrict to cities
-
-func parseLocation(p *kv.KV, db *rawgeo.RawGeo) error {
-	file, err := os.Open("cities1000.txt")
+func (rg *ReverseGeo) InitialLoading(pathCities1000 string) error {
+	p := rg.kv
+	db := rg.rawgeo
+	file, err := os.Open(pathCities1000)
 	if err != nil {
 		panic(err)
 	}
@@ -129,65 +160,34 @@ func parseLocation(p *kv.KV, db *rawgeo.RawGeo) error {
 	return nil
 }
 
-type ReverseGeo struct {
-	rawgeo *rawgeo.RawGeo
-	kv     *kv.KV
+func (rg *ReverseGeo) SetupLua(L *lua.LState) {
+	L.PreloadModule("reversegeo", rg.createLuaModule)
 }
 
-func New(rg *rawgeo.RawGeo, kv *kv.KV) (*ReverseGeo, error) {
-	return &ReverseGeo{
-		rawgeo: rg,
-		kv:     kv,
-	}, nil
-}
-
-func (rg *ReverseGeo) Close() error {
-	rg.rawgeo.Close()
-	rg.kv.Close()
-	return nil
-}
-
-func (rg *ReverseGeo) Query(lat, lng float64, prec int) (*Place, error) {
-	res, err := rg.rawgeo.Query(lat, lng, float64(prec)) // 40m
-	if err != nil {
-		return nil, err
-	}
-	if res != nil && len(res) > 0 {
-		p := &Place{}
-		if err := rg.kv.Get(res[0].ID, p); err != nil {
-			return nil, err
-		}
-		return p, nil
-	}
-	return nil, nil
-}
-
-func (rg *ReverseGeo) SetupLua() func(*lua.LState) int {
-	return func(L *lua.LState) int {
-		// Setup the "reversegeo" module
-		mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-			"reversegeo": func(L *lua.LState) int {
-				tbl := L.CheckTable(1)
-				if tbl == nil {
-					return 1
-				}
-				lat := float64(tbl.RawGetH(lua.LString("lat")).(lua.LNumber))
-				lng := float64(tbl.RawGetH(lua.LString("lng")).(lua.LNumber))
-				place, err := rg.Query(lat, lng, 10000)
-				if err != nil {
-					panic(err)
-				}
-				res := L.CreateTable(0, 3)
-				res.RawSetH(lua.LString("lat"), lua.LNumber(place.Lat))
-				res.RawSetH(lua.LString("lng"), lua.LNumber(place.Lng))
-				res.RawSetH(lua.LString("data"), luautil.InterfaceToLValue(L, place.Data))
-				L.Push(res)
+func (rg *ReverseGeo) createLuaModule(L *lua.LState) int {
+	// Setup the "reversegeo" module
+	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+		"reversegeo": func(L *lua.LState) int {
+			tbl := L.CheckTable(1)
+			if tbl == nil {
 				return 1
-			},
-		})
-		L.Push(mod)
-		return 1
-	}
+			}
+			lat := float64(tbl.RawGetH(lua.LString("lat")).(lua.LNumber))
+			lng := float64(tbl.RawGetH(lua.LString("lng")).(lua.LNumber))
+			place, err := rg.Query(lat, lng, 10000)
+			if err != nil {
+				panic(err)
+			}
+			res := L.CreateTable(0, 3)
+			res.RawSetH(lua.LString("lat"), lua.LNumber(place.Lat))
+			res.RawSetH(lua.LString("lng"), lua.LNumber(place.Lng))
+			res.RawSetH(lua.LString("data"), luautil.InterfaceToLValue(L, place.Data))
+			L.Push(res)
+			return 1
+		},
+	})
+	L.Push(mod)
+	return 1
 }
 
 func (rg *ReverseGeo) apiReverseGeo(w http.ResponseWriter, r *http.Request) {

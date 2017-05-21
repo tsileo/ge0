@@ -417,33 +417,35 @@ func tsRange(L *lua.LState) int {
 	return 2
 }
 
-func (db *DB) SetupLua() func(*lua.LState) int {
-	return func(L *lua.LState) int {
-		// Setup the Lua meta table the http (client) user-defined type
-		mtHTTP := L.NewTypeMetatable("timeseries")
-		methods := map[string]lua.LGFunction{
-			"insert": tsInsert,
-			"range":  tsRange,
-		}
-		L.SetField(mtHTTP, "__index", L.SetFuncs(L.NewTable(), methods))
+func (db *DB) SetupLua(L *lua.LState) {
+	L.PreloadModule("timeseries", db.createLuaModule)
+}
 
-		// Setup the "http" module
-		mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-			"new": func(L *lua.LState) int {
-				lts := &luaTimeSeries{
-					db:   db,
-					name: L.ToString(1),
-				}
-				ud := L.NewUserData()
-				ud.Value = lts
-				L.SetMetatable(ud, L.GetTypeMetatable("timeseries"))
-				L.Push(ud)
-				return 1
-			},
-		})
-		L.Push(mod)
-		return 1
+func (db *DB) createLuaModule(L *lua.LState) int {
+	// Setup the Lua meta table the http (client) user-defined type
+	mtHTTP := L.NewTypeMetatable("timeseries")
+	methods := map[string]lua.LGFunction{
+		"insert": tsInsert,
+		"range":  tsRange,
 	}
+	L.SetField(mtHTTP, "__index", L.SetFuncs(L.NewTable(), methods))
+
+	// Setup the "http" module
+	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+		"new": func(L *lua.LState) int {
+			lts := &luaTimeSeries{
+				db:   db,
+				name: L.ToString(1),
+			}
+			ud := L.NewUserData()
+			ud.Value = lts
+			L.SetMetatable(ud, L.GetTypeMetatable("timeseries"))
+			L.Push(ud)
+			return 1
+		},
+	})
+	L.Push(mod)
+	return 1
 }
 
 func (db *DB) apiTimeSeries(w http.ResponseWriter, r *http.Request) {

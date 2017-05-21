@@ -11,6 +11,29 @@
  - Built-in geospatial index using geohashes
  - Built-in offline reverse geocoding API
 
+## Quickstart
+
+```shell
+$ mkdir myapp
+$ echo "app.response:write('hello myapp')" > myapp/app.lua
+$ ge0 myapp
+```
+
+```shell
+$ curl http://localhost:8010/app
+hello myapp
+```
+
+### Reversegeo index
+
+The index is built on the `cities1000.zip` (all cities with a population > 1000) dump from GeoNames.
+
+You can download it [here](all cities with a population > 1000). Once you have unzipped the file, run:
+
+```shell
+$ ge0 -build-reversegeo-index -path-cities1000txt=/path/to/cities1000.txt /path/to/your/app
+```
+
 ## API
 
 ### GET /api/reversegeo

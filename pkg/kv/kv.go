@@ -2,7 +2,6 @@ package kv
 
 import (
 	"encoding/json"
-	_ "fmt"
 	"os"
 	"time"
 
@@ -10,6 +9,8 @@ import (
 
 	ckv "github.com/cznic/kv"
 )
+
+// XXX(tsileo): add GetCounter/IncrCounter and Del method? and rename others to GetJSON PutJSON?
 
 type KV struct {
 	db   *ckv.DB
