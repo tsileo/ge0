@@ -53,10 +53,11 @@ func CorsMiddleware(next http.Handler) http.Handler {
 
 func main() {
 	var noApp, reloadReverseGeo bool
-	var pathCities1000 string
+	var pathCities1000, listen string
 	flag.BoolVar(&noApp, "no-app", false, "Disable the Lua app")
 	flag.BoolVar(&reloadReverseGeo, "build-reversegeo-index", false, "Build the reversegeo database from the cities1000 dataset")
 	flag.StringVar(&pathCities1000, "path-cities1000txt", "cities1000.txt", "Path to the cities1000.txt file for reloading the reversegeo db")
+	flag.StringVar(&listen, "listen", ":8010", "host:port for the HTTP server")
 	flag.Parse()
 	appPath := flag.Arg(0)
 	if !noApp && appPath == "" {
@@ -122,10 +123,10 @@ func main() {
 	r.PathPrefix("/api").Handler(CorsMiddleware(APIMiddleware(api)))
 
 	http.Handle("/", ServerMiddleware(r))
-	h := &http.Server{Addr: ":8010", Handler: nil}
+	h := &http.Server{Addr: listen, Handler: nil}
 
 	go func() {
-		log.Printf("Listening on :8010")
+		log.Printf("Listening on %s", listen)
 		if err := h.ListenAndServe(); err != nil {
 			log.Printf("failed to start server: %s", err)
 		}
