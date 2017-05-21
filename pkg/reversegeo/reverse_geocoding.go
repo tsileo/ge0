@@ -10,7 +10,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/pariz/gountries"
-	"github.com/tsileo/ge0/pkg/places"
+	"github.com/tsileo/ge0/pkg/kv"
 	"github.com/yuin/gopher-lua"
 
 	"a4.io/blobstash/pkg/apps/luautil"
@@ -21,6 +21,12 @@ import (
 // TODO(tsile): explain how to download cities1000.txt and give a setup script
 
 var data = gountries.New()
+
+type Place struct {
+	Lng  float64                `json:"lng"`
+	Lat  float64                `json:"lat"`
+	Data map[string]interface{} `json:"data"`
+}
 
 type Location struct {
 	ID                 string  `json:"id"`          // 0
@@ -36,8 +42,8 @@ type Location struct {
 	Name            string `json:"name"`
 }
 
-func (l *Location) ToPlace() *places.Place {
-	return &places.Place{
+func (l *Location) ToPlace() *Place {
+	return &Place{
 		Lat: l.Lat,
 		Lng: l.Lon,
 		Data: map[string]interface{}{
@@ -57,7 +63,7 @@ func (l *Location) ToPlace() *places.Place {
 
 // XXX(tsileo): filter by feature class/feature code to only restrict to cities
 
-func parseLocation(p *places.Places, db *rawgeo.RawGeo) error {
+func parseLocation(p *kv.KV, db *rawgeo.RawGeo) error {
 	file, err := os.Open("cities1000.txt")
 	if err != nil {
 		panic(err)
@@ -96,6 +102,7 @@ func parseLocation(p *places.Places, db *rawgeo.RawGeo) error {
 			}
 		}
 
+		// FIXME(ts): add the state for the US
 		if loc.SubdivisionName != "" {
 			loc.Name = fmt.Sprintf("%s, %s, %s", loc.CityName, loc.SubdivisionName, loc.CountryName)
 		} else {
@@ -124,30 +131,30 @@ func parseLocation(p *places.Places, db *rawgeo.RawGeo) error {
 
 type ReverseGeo struct {
 	rawgeo *rawgeo.RawGeo
-	places *places.Places
+	kv     *kv.KV
 }
 
-func New(rg *rawgeo.RawGeo, pl *places.Places) (*ReverseGeo, error) {
+func New(rg *rawgeo.RawGeo, kv *kv.KV) (*ReverseGeo, error) {
 	return &ReverseGeo{
 		rawgeo: rg,
-		places: pl,
+		kv:     kv,
 	}, nil
 }
 
 func (rg *ReverseGeo) Close() error {
 	rg.rawgeo.Close()
-	rg.places.Close()
+	rg.kv.Close()
 	return nil
 }
 
-func (rg *ReverseGeo) Query(lat, lng float64, prec int) (*places.Place, error) {
+func (rg *ReverseGeo) Query(lat, lng float64, prec int) (*Place, error) {
 	res, err := rg.rawgeo.Query(lat, lng, float64(prec)) // 40m
 	if err != nil {
 		return nil, err
 	}
 	if res != nil && len(res) > 0 {
-		p, err := rg.places.Get(res[0].ID)
-		if err != nil {
+		p := &Place{}
+		if err := rg.kv.Get(res[0].ID, p); err != nil {
 			return nil, err
 		}
 		return p, nil

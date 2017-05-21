@@ -9,7 +9,7 @@ import (
 
 	"a4.io/gluapp"
 	"github.com/gorilla/mux"
-	"github.com/tsileo/ge0/pkg/places"
+	"github.com/tsileo/ge0/pkg/kv"
 	"github.com/tsileo/ge0/pkg/reversegeo"
 	"github.com/tsileo/ge0/pkg/timeseries"
 	"github.com/yuin/gopher-lua"
@@ -55,7 +55,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	p, err := places.New("data/cities.places.db")
+	p, err := kv.New("data/cities.places.db")
 	if err != nil {
 		panic(err)
 	}
