@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/yuin/gopher-lua"
 
@@ -122,7 +123,8 @@ func main() {
 	r.PathPrefix("/app").Handler(app)
 	r.PathPrefix("/api").Handler(CorsMiddleware(APIMiddleware(api)))
 
-	http.Handle("/", ServerMiddleware(r))
+	router := handlers.LoggingHandler(os.Stdout, r)
+	http.Handle("/", ServerMiddleware(router))
 	h := &http.Server{Addr: listen, Handler: nil}
 
 	go func() {
