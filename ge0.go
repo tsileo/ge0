@@ -1,7 +1,11 @@
 package main
 
 import (
+	"context"
+	"log"
 	"net/http"
+	"os"
+	"os/signal"
 
 	"a4.io/gluapp"
 	"github.com/gorilla/mux"
@@ -43,6 +47,9 @@ func CorsMiddleware(next http.Handler) http.Handler {
 }
 
 func main() {
+	stop := make(chan os.Signal)
+
+	signal.Notify(stop, os.Interrupt)
 	// TODO(tsileo): YAML config and DBs per app
 	db, err := rawgeo.New("data/cities.db")
 	if err != nil {
@@ -58,8 +65,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer ts.Close()
-
 	rg, err := reversegeo.New(db, p)
 	if err != nil {
 		panic(err)
@@ -89,6 +94,18 @@ func main() {
 	r.PathPrefix("/app").Handler(app)
 	r.PathPrefix("/api").Handler(CorsMiddleware(APIMiddleware(api)))
 	http.Handle("/", ServerMiddleware(r))
+	h := &http.Server{Addr: ":8010", Handler: nil}
 
-	http.ListenAndServe(":8010", nil)
+	go func() {
+		if err := h.ListenAndServe(); err != nil {
+			log.Printf("failed to start server: %s", err)
+		}
+	}()
+	<-stop
+
+	log.Println("\nShutting down the server...")
+
+	h.Shutdown(context.Background())
+	rg.Close()
+	ts.Close()
 }
