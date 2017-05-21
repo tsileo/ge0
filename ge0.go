@@ -39,6 +39,7 @@ func APIMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// TODO(tsileo): use handler from gorilla/handlers
 func CorsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept")
@@ -101,26 +102,29 @@ func main() {
 		log.Println("Done")
 	}
 
-	setupApp := func(L *lua.LState) error {
-		// FIXME(tsileo): set "nano" time.UnixNano and a custom log func (and requestID?)
-		ts.SetupLua(L)
-		rg.SetupLua(L)
-		return nil
-	}
-
-	app, err := gluapp.NewApp(&gluapp.Config{Path: filepath.Join(appPath, "app"), SetupState: setupApp})
-	if err != nil {
-		panic(err)
-	}
-
 	r := mux.NewRouter()
+	if !noApp {
+		log.Printf("Lua app disabled")
+		setupApp := func(L *lua.LState) error {
+			// FIXME(tsileo): set "nano" time.UnixNano and a custom log func (and requestID?)
+			ts.SetupLua(L)
+			rg.SetupLua(L)
+			return nil
+		}
+
+		app, err := gluapp.NewApp(&gluapp.Config{Path: filepath.Join(appPath, "app"), SetupState: setupApp})
+		if err != nil {
+			panic(err)
+		}
+
+		r.PathPrefix("/app").Handler(app)
+	}
 
 	api := mux.NewRouter()
 
 	rg.SetupAPI(api)
 	ts.SetupAPI(api)
 
-	r.PathPrefix("/app").Handler(app)
 	r.PathPrefix("/api").Handler(CorsMiddleware(APIMiddleware(api)))
 
 	router := handlers.LoggingHandler(os.Stdout, r)
