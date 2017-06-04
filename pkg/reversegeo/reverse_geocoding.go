@@ -178,6 +178,10 @@ func (rg *ReverseGeo) createLuaModule(L *lua.LState) int {
 			if err != nil {
 				panic(err)
 			}
+			if place == nil {
+				L.Push(lua.LNil)
+				return 1
+			}
 			res := L.CreateTable(0, 3)
 			res.RawSetH(lua.LString("lat"), lua.LNumber(place.Lat))
 			res.RawSetH(lua.LString("lng"), lua.LNumber(place.Lng))
