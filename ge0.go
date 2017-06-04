@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
@@ -74,7 +75,13 @@ func main() {
 
 	stop := make(chan os.Signal)
 
-	signal.Notify(stop, os.Interrupt)
+	signal.Notify(stop,
+		os.Interrupt,
+		syscall.SIGHUP,
+		syscall.SIGINT,
+		syscall.SIGTERM,
+		syscall.SIGQUIT,
+	)
 	// TODO(tsileo): YAML config and DBs per app
 	db, err := rawgeo.New(filepath.Join(dataPath, "reversegeo.geoindex.db"))
 	if err != nil {
