@@ -1,5 +1,7 @@
 # ge0
 
+[![Build Status](https://travis-ci.org/tsileo/ge0.svg?branch=master)](https://travis-ci.org/tsileo/ge0)
+
 Offline reverse geolocation HTTP API.
 
 ## Quickstart
