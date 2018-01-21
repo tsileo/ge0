@@ -11,9 +11,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/pariz/gountries"
 	"github.com/tsileo/ge0/pkg/kv"
-	"github.com/yuin/gopher-lua"
 
-	"a4.io/blobstash/pkg/apps/luautil"
 	"a4.io/blobstash/pkg/httputil"
 	"a4.io/rawgeo"
 )
@@ -160,40 +158,6 @@ func (rg *ReverseGeo) InitialLoading(pathCities1000 string) error {
 	return nil
 }
 
-func (rg *ReverseGeo) SetupLua(L *lua.LState) {
-	L.PreloadModule("reversegeo", rg.createLuaModule)
-}
-
-func (rg *ReverseGeo) createLuaModule(L *lua.LState) int {
-	// Setup the "reversegeo" module
-	mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
-		"reversegeo": func(L *lua.LState) int {
-			tbl := L.CheckTable(1)
-			if tbl == nil {
-				return 1
-			}
-			lat := float64(tbl.RawGetH(lua.LString("lat")).(lua.LNumber))
-			lng := float64(tbl.RawGetH(lua.LString("lng")).(lua.LNumber))
-			place, err := rg.Query(lat, lng, 10000)
-			if err != nil {
-				panic(err)
-			}
-			if place == nil {
-				L.Push(lua.LNil)
-				return 1
-			}
-			res := L.CreateTable(0, 3)
-			res.RawSetH(lua.LString("lat"), lua.LNumber(place.Lat))
-			res.RawSetH(lua.LString("lng"), lua.LNumber(place.Lng))
-			res.RawSetH(lua.LString("data"), luautil.InterfaceToLValue(L, place.Data))
-			L.Push(res)
-			return 1
-		},
-	})
-	L.Push(mod)
-	return 1
-}
-
 func (rg *ReverseGeo) apiReverseGeo(w http.ResponseWriter, r *http.Request) {
 	q := httputil.NewQuery(r.URL.Query())
 	lat, err := strconv.ParseFloat(r.URL.Query().Get("lat"), 64)
@@ -212,6 +176,12 @@ func (rg *ReverseGeo) apiReverseGeo(w http.ResponseWriter, r *http.Request) {
 	place, err := rg.Query(lat, lng, precision)
 	if err != nil {
 		panic(err)
+	}
+	if place == nil {
+		place = &Place{
+			Lat: lat,
+			Lng: lng,
+		}
 	}
 	httputil.WriteJSON(w, place)
 }
